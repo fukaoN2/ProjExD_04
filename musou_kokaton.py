@@ -6,8 +6,8 @@ import time
 import pygame as pg
 
 
-WIDTH = 1600  # ゲームウィンドウの幅
-HEIGHT = 900  # ゲームウィンドウの高さ
+WIDTH = 1250  # ゲームウィンドウの幅
+HEIGHT = 600  # ゲームウィンドウの高さ
 
 
 def check_bound(obj: pg.Rect) -> tuple[bool, bool]:
@@ -126,7 +126,7 @@ class Bomb(pg.sprite.Sprite):
         self.image.set_colorkey((0, 0, 0))
         self.rect = self.image.get_rect()
         # 爆弾を投下するemyから見た攻撃対象のbirdの方向を計算
-        self.vx, self.vy = calc_orientation(emy.rect, bird.rect)  
+        self.vx, self.vy = calc_orientation(emy.rect, bird.rect)
         self.rect.centerx = emy.rect.centerx
         self.rect.centery = emy.rect.centery+emy.rect.height/2
         self.speed = 6
@@ -249,6 +249,55 @@ class Score:
         screen.blit(self.image, self.rect)
 
 
+class Shield(pg.sprite.Sprite):
+    """
+    シールドに関数する関数
+    """
+    def __init__(self, bird: Bird,life):
+        super().__init__()
+        self.vx, self.vy = bird.get_direction()
+        angle = math.degrees(math.atan2(-self.vy, self.vx))
+        self.image = pg.Surface([20,200])
+        
+        self.imgs = {
+                (+1, 0): self.image,  # 右
+                (+1, -1): pg.transform.rotozoom(self.image, angle, 1.0),  # 右上
+                (0, -1): pg.transform.rotozoom(self.image, angle, 1.0),  # 上
+                (-1, -1): pg.transform.rotozoom(self.image, -angle, 1.0),  # 左上
+                (-1, 0): self.image,  # 左
+                (-1, +1): pg.transform.rotozoom(self.image, angle, 1.0),  # 左下
+                (0, +1): pg.transform.rotozoom(self.image, -angle, 1.0),  # 下
+                (+1, +1): pg.transform.rotozoom(self.image, -angle, 1.0),  # 右下
+            }
+        
+        pg.draw.rect(self.image,(0,0,0),(bird.rect.centerx,bird.rect.centery,20,200))
+        self.vx = math.cos(math.radians(angle))
+        self.vy = -math.sin(math.radians(angle))
+        self.dire = (+1, 0)
+        self.image = self.imgs[self.dire]
+        self.rect = self.image.get_rect()
+        self.rect.centery = bird.rect.centery+bird.rect.height*self.vy
+        self.rect.centerx = bird.rect.centerx+bird.rect.width*self.vx
+        self.life = life
+    
+    
+        self.dire = (+1, 0)
+        self.image = self.imgs[self.dire]
+        self.rect = self.image.get_rect()
+
+    def update(self, bird: Bird):
+        """
+        シールドを速度ベクトルself.vx, self.vyに基づき移動させる
+        引数 screen：画面Surface
+        """
+        self.rect.centery = bird.rect.centery+bird.rect.height*self.vy
+        self.rect.centerx = bird.rect.centerx+bird.rect.width*self.vx
+        self.rect
+        self.life -= 1
+        #self.rect.move_ip(+self.vx, self.vy)
+        if self.life < 0:
+            self.kill()
+
 def main():
     pg.display.set_caption("真！こうかとん無双")
     screen = pg.display.set_mode((WIDTH, HEIGHT))
@@ -260,6 +309,7 @@ def main():
     beams = pg.sprite.Group()
     exps = pg.sprite.Group()
     emys = pg.sprite.Group()
+    shield = pg.sprite.Group()
 
     tmr = 0
     clock = pg.time.Clock()
@@ -270,6 +320,8 @@ def main():
                 return 0
             if event.type == pg.KEYDOWN and event.key == pg.K_SPACE:
                 beams.add(Beam(bird))
+            if event.type == pg.KEYDOWN and event.key == pg.K_CAPSLOCK and score.score > 10:
+                shield.add(Shield(bird,100))
         screen.blit(bg_img, [0, 0])
 
         if tmr%200 == 0:  # 200フレームに1回，敵機を出現させる
@@ -289,16 +341,23 @@ def main():
             exps.add(Explosion(bomb, 50))  # 爆発エフェクト
             score.score_up(1)  # 1点アップ
 
+        for bomb in pg.sprite.groupcollide(bombs, shield, True, True).keys():
+            exps.add(Explosion(bomb, 50))  # 爆発エフェクト
+            score.score_up(1)  # 1点アップ
+
         if len(pg.sprite.spritecollide(bird, bombs, True)) != 0:
             bird.change_img(8, screen) # こうかとん悲しみエフェクト
             score.update(screen)
             pg.display.update()
             time.sleep(2)
             return
+        
 
         bird.update(key_lst, screen)
         beams.update()
         beams.draw(screen)
+        shield.update(bird)
+        shield.draw(screen)
         emys.update()
         emys.draw(screen)
         bombs.update()
